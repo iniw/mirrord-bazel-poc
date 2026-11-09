@@ -1,0 +1,22 @@
+[package]
+name = "mirrord"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+aws-lc-rs.workspace = true
+ring.workspace = true
+rust-embed.workspace = true
+mirrord-bundle = { path = "../bundle" }
+mirrord-layer-lib = { path = "../layer-lib", features = ["cli-execution"] }
+
+[dev-dependencies]
+runfiles.workspace = true
+
+[features]
+# Embeds the layer and the UI, rather than reading them at run time. Bazel's
+# `//mirrord/cli:cli_standalone` turns it on, and passes their paths to rustc.
+standalone = []
+
+[lints]
+workspace = true

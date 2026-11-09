@@ -1,0 +1,49 @@
+# The toolchains and packages of the test apps that aren't written in Rust or C. `MODULE.bazel`
+# includes this file.
+
+bazel_dep(name = "rules_go", version = "0.65.0")
+bazel_dep(name = "gazelle", version = "0.54.0")
+bazel_dep(name = "rules_python", version = "2.4.6")
+
+# The Go versions that `app_go` is built with, one test for each.
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.download(version = "1.27.3")
+go_sdk.download(version = "1.26.10")
+go_sdk.download(version = "1.25.14")
+
+# The Go modules of the Go test apps, from their `go.mod` and `go.sum`. Each app's BUILD file
+# depends on them by repository, like `@com_github_go_chi_chi_v5//:chi`.
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//mirrord/layer-tests/tests/apps/app_go:go.mod")
+use_repo(go_deps, "com_github_go_chi_chi_v5")
+
+# The Python interpreter for the Python test apps, and their pip packages, from a lock that
+# `uv pip compile --generate-hashes` writes.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.13",
+)
+
+# Python targets in this module would otherwise get an empty `__init__.py` in every directory of
+# their runfiles, which rules_python deprecated. The apps are single files, and the pip packages
+# ship their own `__init__.py` files, so nothing relies on the generated ones.
+rules_python_config = use_extension("@rules_python//python/extensions:config.bzl", "config")
+rules_python_config.explicit_init_py(default = True)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pip",
+    python_version = "3.13",
+    requirements_lock = "//mirrord/layer-tests/tests/apps:requirements.txt",
+    # By default, only the host's wheels resolve, so builds for other platforms would fail.
+    target_platforms = [
+        "linux_aarch64",
+        "linux_x86_64",
+        "osx_aarch64",
+        "osx_x86_64",
+        "windows_aarch64",
+        "windows_x86_64",
+    ],
+)
+use_repo(pip, "pip")

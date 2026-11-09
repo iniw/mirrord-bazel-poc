@@ -1,0 +1,20 @@
+[package]
+name = "mirrord-layer"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ctor.workspace = true
+frida-gum = { workspace = true, features = ["invocation-listener"] }
+libc.workspace = true
+mirrord-layer-lib = { path = "../layer-lib", features = ["layer-hook-execution"] }
+
+[dev-dependencies]
+libloading.workspace = true
+runfiles.workspace = true

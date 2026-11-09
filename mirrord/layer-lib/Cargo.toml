@@ -1,0 +1,17 @@
+[package]
+name = "mirrord-layer-lib"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Spawning processes from the CLI.
+cli-execution = []
+# Spawning processes from a hooked function in the layer.
+layer-hook-execution = ["dep:libc"]
+
+[dependencies]
+libc = { workspace = true, optional = true }

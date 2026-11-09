@@ -1,0 +1,172 @@
+# The module file, the Bazel counterpart of the workspace's root `Cargo.toml`. It names the
+# workspace as the module `mirrord`, and declares everything that the build takes from outside the
+# repository. Bazel reads it before any BUILD file. See https://bazel.build/external/module.
+#
+# Each external dependency becomes a repository: a tree of files with BUILD files of its own, whose
+# targets a label names with `@`, like `@crates//:serde`. This file creates repositories in three
+# ways:
+#
+# - `bazel_dep` adds a Bazel module from the Bazel Central Registry (https://registry.bazel.build),
+#   the way Cargo adds a crate from crates.io. Most of these modules are rule sets, like rules_rs,
+#   which provides the Rust rules and toolchains.
+# - `use_extension` loads a module extension, which creates repositories from other inputs, such as
+#   the crates in `Cargo.lock`. `use_repo` then makes the repositories that it names visible to the
+#   workspace's BUILD files.
+# - `use_repo_rule` loads a repository rule, which creates one repository, such as a downloaded
+#   archive.
+#
+# This module is the root module, because Bazel runs in its directory. Some declarations only take
+# effect in the root module, or take precedence there: for example, the toolchains that it
+# registers come before those that its dependencies register. Bazel records the versions that it
+# resolves and the results of the module extensions in `MODULE.bazel.lock`, much as Cargo records
+# the resolved crates in `Cargo.lock`.
+
+module(name = "mirrord")
+
+bazel_dep(name = "rules_rs", version = "0.2.1")
+bazel_dep(name = "llvm", version = "0.8.26")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "bazel_lib", version = "3.7.2")
+bazel_dep(name = "rules_cc", version = "0.2.28")
+bazel_dep(name = "rules_oci", version = "2.3.0")
+bazel_dep(name = "tar.bzl", version = "0.10.9")
+bazel_dep(name = "aspect_rules_js", version = "3.6.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+
+# `@mirrord_version` holds the workspace's version from `Cargo.toml`, which the Rust targets and the
+# UI take (see `//bazel:cargo_version.bzl`).
+cargo_version = use_repo_rule("//bazel:cargo_version.bzl", "cargo_version")
+
+cargo_version(
+    name = "mirrord_version",
+    cargo_toml = "//:Cargo.toml",
+)
+
+# The Rust toolchain that builds every Rust target, like the `channel` in `rust-toolchain.toml`.
+toolchains = use_extension("@rules_rs//rs/toolchains:module_extension.bzl", "toolchains")
+toolchains.toolchain(
+    edition = "2024",
+    version = "1.99.1",
+)
+use_repo(toolchains, "default_rust_toolchains")
+
+# rules_rs builds on rules_rust, and ships a patched copy of it. This makes that copy available as
+# `@rules_rust`, for what rules_rs doesn't provide itself, like `rust_doc` and the clippy aspect.
+rules_rust = use_extension("@rules_rs//rs:rules_rust.bzl", "rules_rust")
+
+# Two patches let rustc link for MSVC with the llvm toolchain, so that any machine can build the
+# Windows CLI and layer. rustc links for MSVC with `link.exe` options, and the llvm toolchain links
+# with clang-cl, a compiler driver that rejects those options (hermetic-llvm#910, rules_rs#137).
+#
+# - `clang-cl-arguments.patch` is rules_rust commit 9fe9776d from hermeticbuild/rules_rust (#102),
+#   without its test. rules_rs's next release should ship it. When rustc drives a `link.exe`-style
+#   linker directly, the patch turns the toolchain's clang-cl link arguments, like
+#   `/clang:-Xlinker /clang:/LIBPATH:...`, into the linker's own.
+# - `lld-link.patch` makes rustc drive the `lld-link` next to clang-cl when the toolchain links MSVC
+#   with clang-cl. lld-link takes `link.exe` options, and the toolchain already passes it the same
+#   arguments through clang-cl. Visual Studio's toolchain links with `link.exe`, so the patch
+#   doesn't change the builds on Windows machines.
+rules_rust.patch(
+    patches = [
+        "//third_party/rules_rust:clang-cl-arguments.patch",
+        "//third_party/rules_rust:lld-link.patch",
+    ],
+    strip = 1,
+)
+use_repo(rules_rust, "rules_rust")
+
+# rules_rs's hermetic bindgen, which `//third_party/frida` uses to generate `frida-gum-sys`'s
+# bindings.
+bindgen = use_extension("@rules_rs//rs:rules_rust_bindgen.bzl", "rules_rust_bindgen")
+use_repo(bindgen, "rules_rust_bindgen")
+
+# The C/C++ toolchains that rules_cc finds installed on the machine. Only Windows machines use one:
+# Visual Studio's, which builds for MSVC through `//platforms:visual_studio_x86_64`.
+cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
+use_repo(cc_configure, "local_config_cc")
+
+# The toolchains that builds can use (`//platforms/BUILD.bazel` explains toolchains). For each
+# kind of toolchain, Bazel takes the first one in this list that fits the platforms, so Visual
+# Studio's toolchain comes before the llvm toolchain, which supports MSVC too.
+register_toolchains(
+    "//platforms:visual_studio_x86_64",
+    "@default_rust_toolchains//...",
+    "@llvm//toolchain:all",
+    "@rules_rust_bindgen//:all",
+    "//platforms:tests_run_on_the_host",
+)
+
+# The `@crates` repository, which holds the Cargo workspace's third-party crates, resolved from
+# `Cargo.toml` and `Cargo.lock`, so that Cargo's files stay the only list of them. Each package's
+# BUILD file takes its crate's dependencies from `@crates` with `all_crate_deps()`.
+#
+# `platform_triples` must list every platform that builds run on or build for, because rules_rs
+# resolves the dependencies and features that depend on the platform only for the listed ones.
+crate = use_extension("@rules_rs//rs:extensions.bzl", "crate")
+crate.from_cargo(
+    name = "crates",
+    cargo_lock = "//:Cargo.lock",
+    cargo_toml = "//:Cargo.toml",
+    platform_triples = [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-pc-windows-gnullvm",
+        "x86_64-pc-windows-gnullvm",
+        "aarch64-pc-windows-msvc",
+        "x86_64-pc-windows-msvc",
+    ],
+)
+use_repo(crate, "crates")
+
+# Bazel runs aws-lc-sys's build script, which compiles the C library the same way that it does
+# under Cargo. Bazel gives the script the target's C toolchain, so the script's output still depends
+# only on the toolchain and the crate. rules_rs suggests a recipe that builds the library from the
+# `aws-lc` module instead, but that module fails to compile against glibc 2.17 without a patch, and
+# it would make the Bazel build differ from the Cargo one. Setting `gen_build_script` to "on"
+# explicitly silences that suggestion.
+#
+# For x86-64 Windows, the build script would assemble parts of aws-lc with NASM, which the
+# toolchain doesn't provide. `AWS_LC_SYS_PREBUILT_NASM` makes the script use the objects that the
+# crate ships already assembled instead. The script ignores the variable on other platforms.
+crate.annotation(
+    build_script_env = {"AWS_LC_SYS_PREBUILT_NASM": "1"},
+    crate = "aws-lc-sys",
+    gen_build_script = "on",
+)
+
+# minhook-detours-sys, which the Windows layer uses, includes `SdkDdkVer.h`, but the Windows SDK
+# names the file `sdkddkver.h`. Windows file systems ignore the case, so Visual Studio finds it, but
+# builds for MSVC on Linux and macOS use the llvm toolchain's copy of the SDK on a case-sensitive
+# file system, and need the include to match.
+crate.annotation(
+    crate = "minhook-detours-sys",
+    patch_args = ["-p1"],
+    patches = ["//third_party/minhook-detours-sys:sdkddkver.patch"],
+)
+
+# The npm packages of the frontends in `packages/`, from the pnpm workspace's lockfile. `data`
+# lists the pnpm workspace's own packages, so that the lockfile's references to them resolve.
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    data = [
+        "//:package.json",
+        "//:pnpm-workspace.yaml",
+        "//packages/ui:package.json",
+        "//packages/wizard:package.json",
+    ],
+    pnpm_lock = "//:pnpm-lock.yaml",
+)
+use_repo(npm, "npm")
+
+# The repositories that only one part of the workspace uses are declared in a `*.MODULE.bazel` file
+# next to that part. `include()` reads such a file as if its contents were written here, except
+# that variables don't carry over between the files, so each file loads its own extensions, like
+# `crate = use_extension(...)`.
+include("//mirrord/agent:agent.MODULE.bazel")
+include("//mirrord/cli:cli.MODULE.bazel")
+include("//mirrord/layer-tests/tests/apps:apps.MODULE.bazel")
+include("//third_party/frida:frida.MODULE.bazel")
+include("//third_party/protoc:protoc.MODULE.bazel")

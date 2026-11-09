@@ -1,0 +1,15 @@
+[package]
+name = "mirrord-layer-win"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(windows)'.dependencies]
+ctor.workspace = true
+minhook-detours-rs.workspace = true
+mirrord-utils-win = { path = "../utils-win" }

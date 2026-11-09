@@ -1,0 +1,7 @@
+[package]
+name = "mirrord-utils-win"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true

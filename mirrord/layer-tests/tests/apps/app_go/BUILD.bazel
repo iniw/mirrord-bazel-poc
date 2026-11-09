@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_cross_binary")
+
+go_binary(
+    name = "app_go",
+    srcs = ["main.go"],
+    pure = "on",
+    deps = ["@com_github_go_chi_chi_v5//:chi"],
+)
+
+# The app built with each Go version that `apps.MODULE.bazel` downloads, for the `app_go` test.
+[go_cross_binary(
+    name = "app_go_" + v.replace(".", "_"),
+    sdk_version = v,
+    target = ":app_go",
+    visibility = ["//visibility:public"],
+) for v in [
+    "1.25",
+    "1.26",
+    "1.27",
+]]

@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = ["mirrord/*"]
+
+[workspace.package]
+edition = "2024"
+version = "3.285.0"
+
+[workspace.lints.clippy]
+indexing_slicing = "warn"
+mod_module_files = "warn"
+str_to_string = "warn"
+
+[workspace.lints.rustdoc]
+private_intra_doc_links = "allow"
+
+# The crates.io dependencies of the workspace's crates, which take them with `<name>.workspace =
+# true`. Bazel resolves them from this workspace and `Cargo.lock` (see `crate.from_cargo` in
+# `MODULE.bazel`).
+[workspace.dependencies]
+aws-lc-rs = "1"
+containerd-client = "0.9"
+ctor = "0.2"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# With `auto-download`, Cargo's build of `frida-gum-sys` downloads Frida's devkit to generate the
+# bindings from. Bazel turns that build script off and provides the devkit itself (see
+# `MODULE.bazel`), so the feature only adds the build script's dependencies to `Cargo.lock`.
+frida-gum = { version = "0.17", features = ["auto-download", "std"] }
+libc = "0.2"
+libloading = "0.9"
+minhook-detours-rs = { git = "https://github.com/metalbear-co/minhook-detours-rs.git", rev = "4bfbf5717c6829f91b527180a038ec591b8265ca" }
+ring = "0.17"
+# The runfiles library that rules_rust publishes, the same as `@rules_rust//rust/runfiles`. Tests
+# use it to find the files in their `data`, and `mirrord-bundle` to find the files that crates
+# bundle.
+runfiles = "0.3"
+# The CLI only embeds the UI with its `standalone` feature. rust-embed would otherwise embed files
+# only in builds without `debug_assertions`, and `debug-embed` makes it embed them in every build
+# that uses it. `interpolate-folder-path` lets Bazel set the UI's path.
+rust-embed = { version = "8", features = ["debug-embed", "interpolate-folder-path"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tar = "0.4"
+tree-sitter = "0.26"
+tree-sitter-yaml = "0.7"
+
+# Bazel resolves patches and git dependencies from this file and `Cargo.lock` too.
+[patch.crates-io]
+tree-sitter = { git = "https://github.com/metalbear-co/tree-sitter.git", tag = "hotfix" }
+tree-sitter-language = { git = "https://github.com/metalbear-co/tree-sitter.git", tag = "hotfix" }

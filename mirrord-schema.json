@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LayerFileConfig",
+  "description": "The configuration file of mirrord.",
+  "type": "object",
+  "properties": {
+    "target": {
+      "description": "The pod, deployment or other resource to run in the context of, like `deployment/app`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "targetless": {
+      "description": "Whether to run without a target, in the context of the cluster alone.",
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "additionalProperties": false
+}

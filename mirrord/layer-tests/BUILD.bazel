@@ -1,0 +1,38 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("//bazel:rust.bzl", "rust_library", "rust_test")
+
+# Helpers that the tests use to find and run the apps in `tests/apps`.
+rust_library(
+    name = "layer-tests",
+    srcs = glob(["src/**/*.rs"]),
+    deps = all_crate_deps(normal = True),
+)
+
+# Each file in `tests/` is its own test crate, as it is for Cargo. A test finds each app by its
+# runfiles path, which only exists for the targets in its `data`.
+[
+    rust_test(
+        name = test,
+        srcs = ["tests/" + test + ".rs"],
+        data = data,
+        deps = all_crate_deps(normal_dev = True) + [":layer-tests"],
+    )
+    for test, data in {
+        "app_go": [
+            "//mirrord/layer-tests/tests/apps/app_go:app_go_1_25",
+            "//mirrord/layer-tests/tests/apps/app_go:app_go_1_26",
+            "//mirrord/layer-tests/tests/apps/app_go:app_go_1_27",
+        ],
+        "c_stat": ["//mirrord/layer-tests/tests/apps/c_stat"],
+        "getuid": [
+            "//mirrord/layer",
+            "//mirrord/layer-tests/tests/apps/getuid:getuid_c",
+            "//mirrord/layer-tests/tests/apps/getuid:getuid_node",
+            "//mirrord/layer-tests/tests/apps/getuid:getuid_py",
+        ],
+        "dlopen_cgo": [
+            "//mirrord/layer-tests/tests/apps/dlopen_cgo:go_server",
+            "//mirrord/layer-tests/tests/apps/dlopen_cgo:loader",
+        ],
+    }.items()
+]

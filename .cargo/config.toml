@@ -1,0 +1,24 @@
+# Settings for Cargo, which checks the workspace for `cargo check`, `cargo clippy` and
+# rust-analyzer, while Bazel builds it. Bazel ignores this file.
+
+[env]
+# The paths of the files that crates bundle, which point at placeholders, so that Cargo can compile
+# the crates that embed the files. A crate that Cargo builds this way type-checks, but doesn't work.
+#
+# Bazel builds the bundled files, like the CLI's layer and UI, and passes rustc the path of each one
+# in these variables. The crates embed the files at those paths: mcp always, and the CLI with its
+# `standalone` feature, which `--all-features` turns on. Cargo doesn't build the files, so an empty
+# file stands in for the layers, the SIP utilities and mcp's corpus, and a UI with only an index
+# page stands in for the UI.
+#
+# `relative = true` makes each path absolute, because the two macros that read these paths resolve
+# relative ones from different directories: `include_bytes!` from the source file that calls it,
+# and rust-embed from the crate's manifest directory.
+MIRRORD_LAYER_FILE = { value = ".cargo/placeholders/empty", relative = true }
+MIRRORD_LAYER_FILE_MACOS_ARM64 = { value = ".cargo/placeholders/empty", relative = true }
+MIRRORD_MCP_CORPUS = { value = ".cargo/placeholders/empty", relative = true }
+MIRRORD_SIP_BINARIES = { value = ".cargo/placeholders/empty", relative = true }
+MIRRORD_UI_DIST = { value = ".cargo/placeholders/ui", relative = true }
+# The name of the Bazel repository that holds the crate, which `runfiles::rlocation!` resolves
+# runfiles paths from. rules_rust sets it for every crate, and the main repository's name is empty.
+REPOSITORY_NAME = ""

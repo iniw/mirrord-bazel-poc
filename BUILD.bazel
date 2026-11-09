@@ -1,0 +1,25 @@
+# A BUILD file makes its directory a package: the targets, such as libraries, binaries, tests and
+# generated files, that Bazel builds from the files in the directory and its subdirectories, except
+# the subdirectories that have a BUILD file of their own. A package plays the part of a crate's
+# `Cargo.toml` or of a `CMakeLists.txt`, but each target lists all of its inputs, so Bazel can cache
+# each target's outputs and rebuild only the targets whose inputs changed. See
+# https://bazel.build/concepts/build-files.
+#
+# This is the root package, `//`, which holds the targets that belong to the whole repository.
+# `//mirrord/cli/BUILD.bazel` explains targets and labels, with the CLI as the example. `load()`
+# imports rules and macros from `.bzl` files, which are written in Starlark, Bazel's dialect of
+# Python.
+
+load("@bazel_lib//lib:write_source_files.bzl", "write_source_files")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+# The root of the pnpm workspace in `pnpm-workspace.yaml`.
+npm_link_all_packages(name = "node_modules")
+
+# `mirrord-schema.json` is checked in, because the schema store publishes it from the repository.
+# `bazel test //...` fails while it differs from the schema that `//mirrord/config` generates, and
+# `bazel run //:mirrord_schema` updates it.
+write_source_files(
+    name = "mirrord_schema",
+    files = {"mirrord-schema.json": "//mirrord/config:schema_json"},
+)

@@ -1,0 +1,10 @@
+[package]
+name = "mirrord-layer-tests"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+runfiles.workspace = true

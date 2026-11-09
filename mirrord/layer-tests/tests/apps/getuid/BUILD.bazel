@@ -1,0 +1,34 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+
+# The same app in C, Python and Node: it prints the process's user ID, which the layer's hook
+# replaces. Bazel provides the Python and Node interpreters and the Python app's pip packages.
+# Windows has no user IDs, so builds there skip the apps and the test that runs them.
+UNIX_ONLY = select({
+    "@platforms//os:windows": ["@platforms//:incompatible"],
+    "//conditions:default": [],
+})
+
+cc_binary(
+    name = "getuid_c",
+    srcs = ["getuid.c"],
+    target_compatible_with = UNIX_ONLY,
+    visibility = ["//mirrord/layer-tests:__pkg__"],
+)
+
+py_binary(
+    name = "getuid_py",
+    srcs = ["getuid.py"],
+    main = "getuid.py",
+    target_compatible_with = UNIX_ONLY,
+    visibility = ["//mirrord/layer-tests:__pkg__"],
+    deps = ["@pip//flask"],
+)
+
+js_binary(
+    name = "getuid_node",
+    entry_point = "getuid.mjs",
+    target_compatible_with = UNIX_ONLY,
+    visibility = ["//mirrord/layer-tests:__pkg__"],
+)

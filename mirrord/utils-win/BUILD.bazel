@@ -1,0 +1,55 @@
+load("@bazel_lib//lib:run_binary.bzl", "run_binary")
+load("@crates//:defs.bzl", "all_crate_deps")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel:rust.bzl", "rust_library")
+
+WINDOWS_ONLY = select({
+    "@platforms//os:windows": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+# The library isn't marked incompatible with other platforms, even though only Windows builds use
+# it. rules_rust also analyzes every dependency of a crate for the execution platform, to find proc
+# macros, so an incompatible library would make every crate that depends on it incompatible.
+rust_library(
+    name = "utils-win",
+    srcs = glob(["src/**/*.rs"]),
+    link_deps = select({
+        "@platforms//os:windows": [":logo"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = all_crate_deps(normal = True),
+)
+
+# The logo's resource, compiled into a COFF object by the toolchain's `llvm-windres`. Cargo would
+# need a build script with `embed-resource`, which runs whichever resource compiler the host has.
+# `--target` only sets the object's machine type, so builds for MSVC link the same object, which has
+# the `.rsrc$01` and `.rsrc$02` sections that `link.exe` reads resources from.
+run_binary(
+    name = "logo_object",
+    srcs = [
+        "src/diagnostics/logo.bmp",
+        "src/diagnostics/logo.rc",
+    ],
+    outs = ["logo.o"],
+    args = [
+        "--no-preprocess",
+        "--input=$(execpath src/diagnostics/logo.rc)",
+        "--output=$(execpath logo.o)",
+    ] + select({
+        "@platforms//cpu:aarch64": ["--target=aarch64-w64-mingw32"],
+        "@platforms//cpu:x86_64": ["--target=x86_64-w64-mingw32"],
+    }),
+    target_compatible_with = WINDOWS_ONLY,
+    tool = "@llvm//tools:llvm-windres",
+)
+
+# Nothing references the resource's symbols, so the linker would leave the object out of the
+# binaries unless it always links it.
+cc_library(
+    name = "logo",
+    srcs = [":logo_object"],
+    target_compatible_with = WINDOWS_ONLY,
+    alwayslink = True,
+)

@@ -1,0 +1,14 @@
+# The external files that the agent's targets use. `MODULE.bazel` includes this file.
+
+# The base of the agent's image, pinned by digest.
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "agent_runtime",
+    digest = "sha256:1401295a07ced47319a655be965967e4c6929e43e2ceb45acb54694c7cf977e2",
+    image = "ghcr.io/metalbear-co/ci-agent-runtime",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64",
+    ],
+)
+use_repo(oci, "agent_runtime", "agent_runtime_linux_amd64", "agent_runtime_linux_arm64")

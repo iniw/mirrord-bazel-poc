@@ -1,0 +1,11 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("//bazel:rust.bzl", "rust_library")
+
+# The crate doesn't have a `standalone` feature of its own: its macro expands in the crate that
+# bundles files, and uses that crate's feature.
+rust_library(
+    name = "bundle",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//visibility:public"],
+    deps = all_crate_deps(normal = True),
+)

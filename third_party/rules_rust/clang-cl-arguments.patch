@@ -1,0 +1,108 @@
+From 9fe9776dd52e84f3355d94773d950639705b6551 Mon Sep 17 00:00:00 2001
+From: Corentin Kerisit <corentin.kerisit@gmail.com>
+Date: Tue, 3 Nov 2026 16:17:45 +0000
+Subject: [PATCH] Preserve clang-cl toolchain arguments for direct MSVC links (#102)
+
+* Preserve clang-cl toolchain arguments for direct MSVC links
+
+* Constrain clang-cl compatibility for direct MSVC links
+
+Treat /clang: arguments as a separately parsed, appended stream. Preserve native LIBPATH arguments and keep the workaround separate from non-MSVC filtering and compiler-driver runtime policy.
+
+Remove the native-archive fallback made unreachable by Windows archive normalization. Retain exact-path runtime archives, with the staticlib metadata guard scoped to that emission path. Replace the helper-only probe with binary/staticlib Rustc action checks in the existing runtime suite.
+
+Validation: 41 focused and neighboring analysis tests pass; the three PR regressions also pass with --experimental_output_paths=strip. Mixed forwarding fails at the previous PR head. Disabling exact-path runtime emission or its staticlib guard makes the corresponding new test fail. Buildifier and git diff --check pass. No fresh Codex/V8 build.
+
+BuildBuddy: https://app.buildbuddy.io/invocation/f03a0d76-18df-45b5-a4fd-4c4b5b2293cf ; path stripping: https://app.buildbuddy.io/invocation/afeb4a14-b34c-4b66-9f51-45d5fa07148e
+
+* Keep direct MSVC link fix scoped to argument forwarding
+
+Restore existing static runtime library emission and remove the synthetic MSVC runtime fixtures. Runtime archives bypassing name normalization is a pre-existing limitation, not the clang-cl forwarding defect fixed by this PR. The hermetic-llvm MSVC toolchain exposes no archives through static_runtime_lib, so the Codex consumer does not require this exception.
+
+Validation: Bazel 9.3.1, 25 focused and neighboring tests pass; direct_msvc_linker_args_test also passes with --experimental_output_paths=strip. Runtime test file matches the PR base exactly. Buildifier and git diff --check pass. No fresh Codex/V8 build.
+
+BuildBuddy: https://app.buildbuddy.io/invocation/d92c8c27-055b-44fd-8fdf-8902e658f4da ; path stripping: https://app.buildbuddy.io/invocation/e9c11868-3683-4e68-a69d-c58172c0d76d
+
+(cherry picked from commit 9fe9776dd52e84f3355d94773d950639705b6551 of
+hermeticbuild/rules_rust, without its change to
+test/unit/cc_toolchain_path_mapping/cc_toolchain_path_mapping_test.bzl,
+which rules_rs's copy of rules_rust doesn't build)
+---
+ rust/private/rustc.bzl |   41 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 41 insertions(+)
+
+diff --git a/rust/private/rustc.bzl b/rust/private/rustc.bzl
+index 0458fc50fd..5b206a6c05 100644
+--- a/rust/private/rustc.bzl
++++ b/rust/private/rustc.bzl
+@@ -414,7 +414,9 @@ _LinkerConfigInfo = provider(fields = [
+     "is_direct_driver",
+     "rpaths",
+     "rust_linker",
++    "target_abi",
+     "target_arch",
++    "target_os",
+     "variables",
+ ])
+ 
+@@ -469,7 +471,9 @@ def _get_linker_config(ctx, crate_type, toolchain, cc_toolchain, feature_configu
+         variables = link_variables,
+         rust_linker = toolchain.linker if use_rust_linker else None,
+         is_direct_driver = use_rust_linker and toolchain.linker_type == "direct",
++        target_abi = toolchain.target_abi,
+         target_arch = toolchain.target_arch,
++        target_os = toolchain.target_os,
+         rpaths = rpaths,
+     )
+ 
+@@ -490,6 +494,41 @@ def _get_linker_env(linker_config):
+         variables = linker_config.variables,
+     )
+ 
++def _msvc_linker_args_from_cc(link_args):
++    """Accommodate clang-cl forwarding when Rust selects a direct MSVC linker.
++
++    This only decodes -Xlinker/-Wl, (including /clang:) and preserves native
++    LIBPATH flags. It does not reproduce compiler-driver runtime selection or expand
++    -resource-dir: https://github.com/hermeticbuild/hermetic-llvm/issues/910.
++    """
++    driver_args = []
++    clang_args = []
++    linker_operand = False
++    for arg in link_args:
++        if not linker_operand and arg.startswith("/clang:"):
++            clang_args.append(arg.removeprefix("/clang:"))
++        else:
++            driver_args.append(arg)
++            linker_operand = not linker_operand and arg == "-Xlinker"
++
++    # Clang parses /clang: arguments separately and appends them after the
++    # original arguments. Do not pair an -Xlinker across these two streams.
++    result = []
++    for stream in [driver_args, clang_args]:
++        skip_next = False
++        for i, arg in enumerate(stream):
++            if skip_next:
++                skip_next = False
++            elif arg == "-Xlinker" and i + 1 < len(stream):
++                result.append(stream[i + 1])
++                skip_next = True
++            elif arg.startswith("-Wl,"):
++                result.extend(arg[4:].split(","))
++            elif arg.upper().startswith(("-LIBPATH:", "/LIBPATH:")):
++                # Already-native flags, including those from direct C++ linkers.
++                result.append(arg)
++    return result
++
+ def _get_linker_args(linker_config):
+     link_args = []
+     if linker_config.variables != None:
+@@ -511,6 +550,8 @@ def _get_linker_args(linker_config):
+         if linker_config.target_arch in ("bpfeb", "bpfel"):
+             # BPF linkers consume Rust bitcode and do not accept C toolchain arguments.
+             link_args = []
++        elif linker_config.is_direct_driver and linker_config.target_os == "windows" and linker_config.target_abi == "msvc":
++            link_args = _msvc_linker_args_from_cc(link_args)
+         elif linker_config.variables != None and link_args:
+             filtered_args = []
+             skip_next = False

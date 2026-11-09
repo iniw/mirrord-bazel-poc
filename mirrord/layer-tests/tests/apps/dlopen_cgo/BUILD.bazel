@@ -1,0 +1,27 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_go//go:def.bzl", "go_binary")
+
+# The loader opens the library with `dlopen`, which Windows doesn't have, so neither target builds
+# for Windows, and builds there skip them and the tests that use them.
+UNIX_ONLY = select({
+    "@platforms//os:windows": ["@platforms//:incompatible"],
+    "//conditions:default": [],
+})
+
+# rules_go writes the library as `go_server_/libgo_server.so`, or `.dylib` on macOS.
+go_binary(
+    name = "go_server",
+    srcs = ["main.go"],
+    cgo = True,
+    linkmode = "c-shared",
+    target_compatible_with = UNIX_ONLY,
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "loader",
+    srcs = ["main.cpp"],
+    linkopts = ["-ldl"],
+    target_compatible_with = UNIX_ONLY,
+    visibility = ["//visibility:public"],
+)

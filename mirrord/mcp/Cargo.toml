@@ -1,0 +1,13 @@
+[package]
+name = "mirrord-mcp"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+flate2.workspace = true
+tar.workspace = true
+tree-sitter.workspace = true
+tree-sitter-yaml.workspace = true

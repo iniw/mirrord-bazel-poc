@@ -1,0 +1,122 @@
+load("@bazel_lib//lib:run_binary.bzl", "run_binary")
+load("@crates//:defs.bzl", "all_crate_deps")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:platform.bzl", "platform_filegroup")
+load("//bazel:rust.bzl", "rust_shared_library", "rust_test")
+
+# The layer for Linux and macOS. Windows has its own, `//mirrord/layer-win`.
+UNIX_ONLY = select({
+    "@platforms//os:windows": ["@platforms//:incompatible"],
+    "//conditions:default": [],
+})
+
+rust_shared_library(
+    name = "layer",
+    srcs = glob(["src/**/*.rs"]),
+    # The layer is loaded into arbitrary programs, so it links the C++ runtime and the unwinder
+    # statically rather than depending on libraries that users' machines don't have.
+    cc_runtime_linkage = "static",
+    target_compatible_with = UNIX_ONLY,
+    visibility = ["//visibility:public"],
+    deps = all_crate_deps(normal = True),
+)
+
+rust_test(
+    name = "unit_tests",
+    crate = ":layer",
+    deps = all_crate_deps(normal_dev = True),
+)
+
+rust_test(
+    name = "load",
+    srcs = ["tests/load.rs"],
+    data = [":layer"],
+    deps = all_crate_deps(normal_dev = True),
+)
+
+# On macOS, the CLI embeds a universal layer, so that it can load the layer into programs of either
+# architecture: an x86-64 program running under Rosetta, an arm64 program, or an arm64e one, like
+# the system's own binaries. The arm64e slice is a shim that tries to load the arm64 layer, which
+# the CLI also embeds on its own. dyld terminates a program when a dylib in `DYLD_INSERT_LIBRARIES`
+# has no slice for the program's architecture, so without the shim, every arm64e program that a
+# mirrord-run program starts would die.
+MACOS_ONLY = select({
+    "@platforms//os:macos": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+# The arm64e slice, as the llvm toolchain links it. The toolchain's clang compiles arm64e code when
+# the target triple says so, which overrides the `aarch64-apple-darwin` triple that the toolchain
+# passes, but its linker, `ld64.lld`, doesn't support arm64e before LLVM 24
+# (llvm/llvm-project#234002): it links the arm64e objects as arm64 ones, and writes a header that
+# says arm64. dyld only loads a dylib into an arm64e process when the header says arm64e, so
+# `:shim_arm64e` fixes the header. Once the llvm module ships LLVM 24, this target can link the
+# shim on its own.
+cc_binary(
+    name = "arm64e/libshim_arm64_header.dylib",
+    srcs = ["shim.c"],
+    copts = ["--target=arm64e-apple-darwin"],
+    linkopts = ["--target=arm64e-apple-darwin"],
+    linkshared = True,
+    target_compatible_with = MACOS_ONLY,
+)
+
+# The arm64e slice. It's `:arm64e/libshim_arm64_header.dylib` with the header's CPU subtype set to
+# `CPU_SUBTYPE_ARM64E | CPU_SUBTYPE_ARM64E_VERSIONED_PTRAUTH_ABI_MASK`, the 4 little-endian bytes
+# at offset 8, which is what Xcode's linker writes. The code is unchanged: dyld doesn't need the
+# arm64e linker's own output, like its authenticated stubs or its chained fixups, so the shim's
+# constructor runs in arm64e processes as it does when Xcode builds the shim. The header is in the
+# first page that lld's ad hoc code signature covers, and the kernel kills a process that maps a
+# page whose hash doesn't match, so `llvm-objcopy` rewrites the file afterwards: it writes a new ad
+# hoc signature whenever it writes a Mach-O file that has one.
+genrule(
+    name = "shim_arm64e",
+    srcs = [":arm64e/libshim_arm64_header.dylib"],
+    outs = ["arm64e/libshim.dylib"],
+    cmd = " && ".join([
+        "cp $< $@",
+        "chmod u+w $@",
+        "printf '\\002\\000\\000\\200' | dd of=$@ bs=1 seek=8 conv=notrunc 2>/dev/null",
+        "$(execpath @llvm//tools:llvm-objcopy) $@",
+    ]),
+    target_compatible_with = MACOS_ONLY,
+    tools = ["@llvm//tools:llvm-objcopy"],
+)
+
+# The layer for each Mac CPU, which `:universal_layer` combines. On a Mac, the slice for its own CPU
+# is the same build as `:layer` (see `//bazel:platform.bzl`).
+[
+    platform_filegroup(
+        name = "layer_" + cpu,
+        srcs = [":layer"],
+        cpu = cpu,
+        os = "macos",
+        target_compatible_with = MACOS_ONLY,
+        visibility = ["//visibility:public"],
+    )
+    for cpu in [
+        "aarch64",
+        "x86_64",
+    ]
+]
+
+run_binary(
+    name = "universal_layer",
+    srcs = [
+        ":layer_aarch64",
+        ":layer_x86_64",
+        ":shim_arm64e",
+    ],
+    outs = ["universal/libmirrord_layer.dylib"],
+    args = [
+        "-create",
+        "-output",
+        "$(execpath universal/libmirrord_layer.dylib)",
+        "$(execpath :layer_x86_64)",
+        "$(execpath :shim_arm64e)",
+        "$(execpath :layer_aarch64)",
+    ],
+    target_compatible_with = MACOS_ONLY,
+    tool = "@llvm//tools:llvm-lipo",
+    visibility = ["//visibility:public"],
+)

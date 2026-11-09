@@ -1,0 +1,10 @@
+{
+  "name": "mirrord-wizard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Config wizard feature of the merged mirrord UI (built via packages/ui).",
+  "dependencies": {
+    "react": "^18.3.1"
+  }
+}

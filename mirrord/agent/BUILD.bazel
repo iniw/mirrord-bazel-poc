@@ -1,0 +1,70 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load")
+load("@tar.bzl//tar:mtree.bzl", "mutate")
+load("@tar.bzl//tar:tar.bzl", "tar")
+load("//bazel:platform.bzl", "platform_filegroup")
+load("//bazel:rust.bzl", "rust_binary")
+
+LINUX_ONLY = select({
+    "@platforms//os:linux": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+rust_binary(
+    name = "mirrord-agent",
+    srcs = glob(["src/**/*.rs"]),
+    target_compatible_with = LINUX_ONLY,
+    deps = all_crate_deps(normal = True),
+)
+
+# The image's layer: the agent at the root of the file system, like `COPY /mirrord-agent /` in
+# the Dockerfile.
+tar(
+    name = "agent_layer",
+    srcs = [":mirrord-agent"],
+    mutate = mutate(strip_prefix = package_name()),
+    target_compatible_with = LINUX_ONLY,
+)
+
+# The agent's image for the target platform.
+oci_image(
+    name = "image",
+    base = "@agent_runtime",
+    cmd = ["./mirrord-agent"],
+    target_compatible_with = LINUX_ONLY,
+    tars = [":agent_layer"],
+)
+
+# `bazel run //mirrord/agent:image_load` loads the image for the host into Docker.
+oci_load(
+    name = "image_load",
+    image = ":image",
+    repo_tags = ["ghcr.io/metalbear-co/mirrord:latest"],
+    target_compatible_with = LINUX_ONLY,
+)
+
+# The image for each Linux CPU. On a Linux machine, the image for its own CPU is the same build as
+# `:image`, and only the other CPU's is a cross-build.
+[
+    platform_filegroup(
+        name = "image_" + cpu,
+        srcs = [":image"],
+        cpu = cpu,
+        os = "linux",
+        tags = ["manual"],
+    )
+    for cpu in [
+        "aarch64",
+        "x86_64",
+    ]
+]
+
+# The image for both Linux CPUs, which CI publishes. `//...` leaves it out, because it cross-builds.
+oci_image_index(
+    name = "image_index",
+    images = [
+        ":image_aarch64",
+        ":image_x86_64",
+    ],
+    tags = ["manual"],
+)

@@ -1,0 +1,24 @@
+# The external files that the CLI's targets use. `MODULE.bazel` includes this file.
+
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+# The macOS utilities that the CLI embeds and copies, unsigned, to run SIP-protected programs.
+http_file(
+    name = "apple_utils",
+    downloaded_file_path = "apple-utils.tar.gz",
+    sha256 = "03125cd565e5a2f64274e7968e38289f3bfe68b86397fa1886568b1dd0e65c39",
+    url = "https://github.com/metalbear-co/appleutils/releases/download/v10/apple-utils-v10.tar.gz",
+)
+
+# The base of the CLI's image, pinned by digest.
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "debian",
+    digest = "sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc",
+    image = "docker.io/library/debian",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64/v8",
+    ],
+)
+use_repo(oci, "debian", "debian_linux_amd64", "debian_linux_arm64_v8")

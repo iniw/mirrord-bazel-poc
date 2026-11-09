@@ -1,0 +1,6 @@
+# Bazel's convenience symlinks into its output base. Bazel names one of them after the
+# workspace directory, so the pattern covers every `bazel-*` entry at the root.
+/bazel-*
+
+# Cargo's output, from `cargo check` or rust-analyzer.
+/target

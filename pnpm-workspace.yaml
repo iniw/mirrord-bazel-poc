@@ -1,0 +1,8 @@
+packages:
+  - packages/ui
+  - packages/wizard
+
+# The packages whose install scripts run. rules_js runs them as build actions, and requires this
+# list.
+allowBuilds:
+  esbuild: true

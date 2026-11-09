@@ -1,0 +1,2 @@
+# The package of the Starlark code that the workspace's BUILD files load, like `rust.bzl`. It has no
+# targets, but `load()` only takes `.bzl` files from a package, so the directory needs a BUILD file.
