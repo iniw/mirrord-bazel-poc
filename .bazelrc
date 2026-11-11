@@ -102,6 +102,11 @@ common --@rules_python//python/config_settings:bootstrap_impl=script
 # `libtest` targets out, so that the tests don't run twice. `--test_tag_filters=` runs them too.
 test --test_tag_filters=-libtest
 
+# Lists each test case under its target in the summary, as `cargo test` and `cargo nextest run`
+# list each test. Bazel would otherwise print one line for each target, which says `PASSED` even
+# when `--test_filter` left no test in it to run.
+test --test_summary=detailed
+
 # `bazel test --config=ci` picks nextest's `ci` profile from `.config/nextest.toml`, like
 # `cargo nextest run --profile ci`.
 test:ci --test_env=NEXTEST_PROFILE=ci
