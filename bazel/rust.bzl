@@ -46,6 +46,22 @@ RUSTC_FLAGS = ["-Dwarnings"] + select({
     "//conditions:default": ["-Clink-arg=-Wno-unused-command-line-argument"],
 })
 
+# The application manifest that the workspace's programs for MSVC embed (see the file), and the
+# linker flags that embed it. `lld-link` merges the file into the manifest that it would write by
+# default. A target that passes the flags needs `WINDOWS_MANIFEST` in its `compile_data`. Builds
+# for gnullvm link through clang, which doesn't know the flags, so their programs have no manifest.
+WINDOWS_MANIFEST = select({
+    "@llvm//constraints/windows/abi:msvc": ["//bazel:long_paths.manifest"],
+    "//conditions:default": [],
+})
+WINDOWS_MANIFEST_FLAGS = select({
+    "@llvm//constraints/windows/abi:msvc": [
+        "-Clink-arg=/MANIFEST:EMBED",
+        "-Clink-arg=/MANIFESTINPUT:$(execpath //bazel:long_paths.manifest)",
+    ],
+    "//conditions:default": [],
+})
+
 def _crate_features():
     """Returns the package's features, unified across the workspace as Cargo unifies them.
 
@@ -140,6 +156,8 @@ def _rust_doc(name, crate = None, **kwargs):
 def rust_binary(name, doc = True, **kwargs):
     """A binary crate, and with `doc`, its `<name>_doc` target.
 
+    A binary for MSVC embeds the application manifest `WINDOWS_MANIFEST`.
+
     Args:
       name: The binary's name.
       doc: Whether to document the crate. A second binary of the same sources, like
@@ -147,6 +165,10 @@ def rust_binary(name, doc = True, **kwargs):
       **kwargs: The attributes of rules_rust's `rust_binary`.
     """
     _cargo_files()
+    kwargs = kwargs | {
+        "compile_data": kwargs.get("compile_data", []) + WINDOWS_MANIFEST,
+        "rustc_flags": kwargs.get("rustc_flags", []) + WINDOWS_MANIFEST_FLAGS,
+    }
     _rust_binary(name = name, **_cargo_attrs(kwargs))
     if doc:
         _rust_doc(name, **kwargs)

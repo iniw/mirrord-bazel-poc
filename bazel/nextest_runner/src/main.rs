@@ -285,6 +285,47 @@ fn find_file(directory: &Path, extension: &str) -> Option<PathBuf> {
     None
 }
 
+/// Returns `program` in a form that Windows can start when its path is long.
+///
+/// `CreateProcessW` only starts a program with a long path when the path is verbatim: absolute,
+/// and prefixed with `\\?\`. The standard library makes long paths verbatim when it opens files,
+/// but not when it starts a program, and a program in a runfiles directory easily has a long path,
+/// because the directory is deep in Bazel's output tree. A short path stays as it is, because a
+/// program may not expect a verbatim path as its own.
+///
+/// This doesn't help with the working directory of the program, which Windows doesn't take as a
+/// verbatim path. The tests' working directories, their packages in the runfiles, stay well below
+/// the limit under Bazel's default output root.
+fn startable(program: PathBuf) -> PathBuf {
+    /// The length from which Bazel treats a program's path as long: Windows' `MAX_PATH`, 260,
+    /// less the 4 characters of the prefix that Windows adds to the path
+    /// (<https://github.com/bazelbuild/bazel/issues/12310>).
+    const LONG_PATH: usize = 256;
+
+    if !cfg!(windows) {
+        return program;
+    }
+
+    // Windows reads the `/` and `..` of a verbatim path literally, so the path has to be
+    // normalized, which making it absolute also does.
+    let Ok(absolute) = std::path::absolute(&program) else {
+        return program;
+    };
+
+    let path = absolute.as_os_str();
+
+    // A path that starts with `\\` is verbatim already, or names a network share, which takes
+    // another prefix.
+    if path.len() < LONG_PATH || path.as_encoded_bytes().starts_with(br"\\") {
+        return program;
+    }
+
+    let mut verbatim = OsString::from(r"\\?\");
+    verbatim.push(path);
+
+    PathBuf::from(verbatim)
+}
+
 /// Keeps this program running when it gets a signal that asks it to stop, so that it can still
 /// copy the JUnit report after nextest exits.
 ///
@@ -445,7 +486,7 @@ fn run_tests(settings: TestSettings) -> anyhow::Result<ExitCode> {
     )
     .with_context(|| format!("can't write {}", tool_config.display()))?;
 
-    let mut command = Command::new(&nextest);
+    let mut command = Command::new(startable(nextest.clone()));
 
     command
         .args(["nextest", "run"])
