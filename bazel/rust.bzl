@@ -25,6 +25,7 @@ load("@rules_rs//rs:rust_library.bzl", _rust_library = "rust_library")
 load("@rules_rs//rs:rust_shared_library.bzl", _rust_shared_library = "rust_shared_library")
 load("@rules_rs//rs:rust_test.bzl", _rust_test = "rust_test")
 load("@rules_rust//rust:defs.bzl", "rust_doc")
+load(":nextest.bzl", "nextest_test")
 
 # The flags that every Rust target of the workspace gets, like `build.rustflags` in
 # `.cargo/config.toml`. Third-party crates and rules_rust's own Rust code don't get them.
@@ -91,6 +92,37 @@ def _cargo_attrs(kwargs, crate_name_from_cargo = True):
         attrs["crate_name"] = crate_name()
     return attrs | kwargs
 
+def _cargo_files():
+    """Declares the package's `cargo_files`, unless an earlier macro in the package did.
+
+    `cargo_files` holds the files that `cargo metadata` reads to describe the package: its
+    `Cargo.toml` and the sources of the targets that Cargo discovers. `//:cargo_metadata` takes
+    them from every package, for nextest (see `//bazel:nextest.bzl`).
+    """
+    if native.existing_rule("cargo_files"):
+        return
+    native.filegroup(
+        name = "cargo_files",
+        srcs = native.glob(
+            [
+                "Cargo.toml",
+                "build.rs",
+                "src/lib.rs",
+                "src/main.rs",
+                "src/bin/*.rs",
+                "src/bin/*/main.rs",
+                "tests/*.rs",
+                "tests/*/main.rs",
+                "examples/*.rs",
+                "examples/*/main.rs",
+                "benches/*.rs",
+                "benches/*/main.rs",
+            ],
+            allow_empty = True,
+        ),
+        visibility = ["//:__pkg__"],
+    )
+
 def _rust_doc(name, crate = None, **kwargs):
     rust_doc(
         name = name + "_doc",
@@ -114,15 +146,24 @@ def rust_binary(name, doc = True, **kwargs):
         `//mirrord/cli:cli_standalone`, would document the same crate again.
       **kwargs: The attributes of rules_rust's `rust_binary`.
     """
+    _cargo_files()
     _rust_binary(name = name, **_cargo_attrs(kwargs))
     if doc:
         _rust_doc(name, **kwargs)
 
 def rust_library(name, **kwargs):
+    _cargo_files()
     _rust_library(name = name, **_cargo_attrs(kwargs))
     _rust_doc(name, **kwargs)
 
 def rust_shared_library(name, **kwargs):
+    """A shared library crate, like a `cdylib`, and its `<name>_doc` target.
+
+    Args:
+      name: The library's name.
+      **kwargs: The attributes of rules_rust's `rust_shared_library`.
+    """
+    _cargo_files()
     attrs = _cargo_attrs(kwargs)
     _rust_shared_library(name = name, **attrs)
 
@@ -141,6 +182,18 @@ def rust_shared_library(name, **kwargs):
     )
     _rust_doc(name, crate = ":" + name + "_doc_crate", **kwargs)
 
+# The attributes that apply to a test as a whole, which `rust_test` gives the `nextest_test` that
+# Bazel runs rather than the `rust_test` that builds the binary.
+_TEST_ATTRS = [
+    "args",
+    "flaky",
+    "local",
+    "shard_count",
+    "size",
+    "timeout",
+    "visibility",
+]
+
 def rust_test(name, **kwargs):
     """A test crate: a file in `tests/`, or a crate's own `#[test]` functions with `crate`.
 
@@ -149,6 +202,12 @@ def rust_test(name, **kwargs):
     features from `Cargo.toml`, as the crate does, and `crate_features` must add the ones that the
     crate's target adds.
 
+    `<name>` runs the tests with cargo-nextest, as `cargo nextest run` does (see
+    `//bazel:nextest.bzl`), so each test runs in a process of its own, and `.config/nextest.toml`
+    sets the retries and the timeouts. `<name>_libtest` builds the test binary, and runs it on its
+    own, with all tests in one process. `.bazelrc` leaves `<name>_libtest` out of `bazel test`,
+    because the tests would run twice.
+
     A test is small unless it says otherwise. Bazel would make it medium, with a 5-minute timeout,
     and then warn that the tests finish far faster than that.
 
@@ -156,14 +215,58 @@ def rust_test(name, **kwargs):
       name: The test's name.
       **kwargs: The attributes of rules_rust's `rust_test`.
     """
+    _cargo_files()
     kwargs.setdefault("size", "small")
+    test_attrs = {attr: kwargs.pop(attr) for attr in _TEST_ATTRS if attr in kwargs}
+    tags = kwargs.pop("tags", [])
+    libtest = name + "_libtest"
+
+    package_data = DEP_DATA.get(native.package_name(), {})
+    package = crate_name().replace("_", "-")
+    if "crate" not in kwargs:
+        kind = "test"
+        binary_name = name
+        binary_id = package + "::" + name
+    elif package_data.get("binaries"):
+        # The tests of a binary crate. The package's only binary is the crate, as in `mirrord/cli`.
+        kind = "bin"
+        binary_name = package_data["binaries"].keys()[0]
+        binary_id = package + "::bin/" + binary_name
+    else:
+        kind = "lib"
+        binary_name = crate_name()
+        binary_id = package
+
+    # The binary's target takes the test's size, so that running it on its own doesn't warn.
+    libtest_attrs = {
+        "size": test_attrs.get("size"),
+        "tags": tags + ["libtest"],
+        "visibility": ["//visibility:private"],
+    }
     if "crate" in kwargs:
         _rust_test(
-            name = name,
+            name = libtest,
             crate_features = _crate_features() + kwargs.pop("crate_features", []),
             rustc_flags = RUSTC_FLAGS + kwargs.pop("rustc_flags", []),
             version = _version(),
-            **kwargs
+            **(kwargs | libtest_attrs)
         )
     else:
-        _rust_test(name = name, **_cargo_attrs(kwargs, crate_name_from_cargo = False))
+        _rust_test(
+            name = libtest,
+            # The crate is named after the test, as Cargo names it, rather than after this target.
+            crate_name = name.replace("-", "_"),
+            **_cargo_attrs(kwargs | libtest_attrs, crate_name_from_cargo = False)
+        )
+
+    nextest_test(
+        name = name,
+        binary_id = binary_id,
+        binary_name = binary_name,
+        kind = kind,
+        manifest = ":Cargo.toml",
+        tags = tags,
+        target_compatible_with = kwargs.get("target_compatible_with"),
+        test = ":" + libtest,
+        **test_attrs
+    )

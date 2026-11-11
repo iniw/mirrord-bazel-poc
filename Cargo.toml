@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["mirrord/*"]
+# `bazel/nextest_runner` is Bazel's test runner (see `//bazel:nextest.bzl`). It's a member so that
+# it takes its dependencies from this workspace, like the other crates.
+members = ["bazel/nextest_runner", "mirrord/*"]
 
 [workspace.package]
 edition = "2024"
@@ -18,7 +20,9 @@ private_intra_doc_links = "allow"
 # true`. Bazel resolves them from this workspace and `Cargo.lock` (see `crate.from_cargo` in
 # `MODULE.bazel`).
 [workspace.dependencies]
+anyhow = "1"
 aws-lc-rs = "1"
+clap = { version = "4", features = ["derive", "env"] }
 containerd-client = "0.9"
 ctor = "0.2"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

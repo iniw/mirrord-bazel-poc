@@ -35,5 +35,6 @@ rust_library(
             "//mirrord/layer-tests/tests/apps/dlopen_cgo:go_server",
             "//mirrord/layer-tests/tests/apps/dlopen_cgo:loader",
         ],
+        "process_isolation": [],
     }.items()
 ]

@@ -11,7 +11,9 @@
 # Python.
 
 load("@bazel_lib//lib:write_source_files.bzl", "write_source_files")
+load("@crates//:data.bzl", "DEP_DATA")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("//bazel:nextest.bzl", "cargo_metadata")
 
 # The root of the pnpm workspace in `pnpm-workspace.yaml`.
 npm_link_all_packages(name = "node_modules")
@@ -23,3 +25,19 @@ write_source_files(
     name = "mirrord_schema",
     files = {"mirrord-schema.json": "//mirrord/config:schema_json"},
 )
+
+# The output of `cargo metadata --no-deps` for the workspace, which nextest takes from Cargo to know
+# the workspace's packages and their targets (see `//bazel:nextest.bzl`). Every package of the
+# Cargo workspace is a Bazel package whose Rust macros declare its `cargo_files`.
+cargo_metadata(
+    name = "cargo_metadata",
+    srcs = ["//{}:cargo_files".format(package) for package in DEP_DATA],
+    visibility = ["//visibility:public"],
+)
+
+# The root `Cargo.toml` and nextest's configuration, which every `nextest_test` reads at run time
+# (see `//bazel:nextest.bzl`).
+exports_files([
+    ".config/nextest.toml",
+    "Cargo.toml",
+])

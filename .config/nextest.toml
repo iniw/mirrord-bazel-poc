@@ -1,0 +1,35 @@
+# The configuration of cargo-nextest, which runs the workspace's tests both under Cargo, with
+# `cargo nextest run`, and under Bazel, with `bazel test` (see `//bazel:nextest.bzl`). A profile is
+# a set of settings: `cargo nextest run --profile ci` picks one under Cargo, and
+# `bazel test --config=ci` picks one under Bazel. See https://nexte.st/docs/configuration/.
+
+[profile.default]
+retries = 2
+slow-timeout = { period = "1m", terminate-after = 3 }
+failure-output = "immediate-final"
+final-status-level = "fail"
+
+[profile.default.junit]
+path = "junit.xml"
+
+# CI keeps each test's output in the JUnit report, and only prints the list of tests that failed
+# or passed on a retry.
+[profile.ci]
+fail-fast = false
+failure-output = "never"
+success-output = "never"
+status-level = "pass"
+final-status-level = "flaky"
+
+[profile.ci.junit]
+path = "junit.xml"
+store-failure-output = true
+
+# The tests of `process_isolation` that change the working directory run one at a time, to show a
+# test group. nextest already runs each test in a process of its own, so they would pass without it.
+[test-groups]
+working-directory = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = "binary(=process_isolation) & test(/^working_directory/)"
+test-group = "working-directory"

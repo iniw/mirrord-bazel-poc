@@ -96,3 +96,12 @@ build:windows --enable_runfiles
 # Makes `py_binary` launchers start the Python interpreter that rules_python downloads, through a
 # shell script, rather than whichever `python3` is on `PATH`, which a NixOS machine may not have.
 common --@rules_python//python/config_settings:bootstrap_impl=script
+
+# Every `rust_test` has a `<name>_libtest` target, tagged `libtest`, that builds the test binary
+# and that `<name>` runs with cargo-nextest (see `//bazel:rust.bzl`). `bazel test` leaves the
+# `libtest` targets out, so that the tests don't run twice. `--test_tag_filters=` runs them too.
+test --test_tag_filters=-libtest
+
+# `bazel test --config=ci` picks nextest's `ci` profile from `.config/nextest.toml`, like
+# `cargo nextest run --profile ci`.
+test:ci --test_env=NEXTEST_PROFILE=ci
