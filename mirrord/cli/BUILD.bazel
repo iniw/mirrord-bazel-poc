@@ -31,32 +31,39 @@ load("//bazel:macos_sign.bzl", "macos_sign")
 load("//bazel:platform.bzl", "platform_filegroup")
 load("//bazel:rust.bzl", "rust_binary", "rust_test")
 
-# The files that the CLI bundles for each OS, by the environment variable that passes each file's
-# path to rustc. Each OS gets the UI and the layer for the CLI's own platform. On macOS, the layer
-# is the universal one, and the CLI also bundles the arm64 layer, which the universal layer's
-# arm64e shim loads, and the SIP utilities, which the CLI uses to load the layer into SIP-protected
-# programs. The Windows layer needs the MSVC ABI, so builds for gnullvm skip the CLI too.
+# The files that the CLI bundles, by the condition that selects them, and then by the environment
+# variable that passes each file's path to rustc. Each OS gets the UI and the layer for the CLI's
+# own platform. On macOS, the layer is the universal one, and the CLI also bundles the arm64 layer,
+# which the universal layer's arm64e shim loads, and the SIP utilities, which the CLI uses to load
+# the layer into SIP-protected programs. The Windows layer needs the MSVC ABI, so builds for gnullvm
+# skip the CLI too.
+#
+# The targets need the files both as labels, in `data` or `compile_data`, and as paths, in
+# `rustc_env`. A `select()` can't be read or converted once it's made, so each of them is a
+# `select()` of its own over this dict.
 BUNDLED_FILES = {
-    "linux": {
+    "@platforms//os:linux": {
         "MIRRORD_LAYER_FILE": "//mirrord/layer",
         "MIRRORD_UI_DIST": "//packages/ui:dist",
     },
-    "macos": {
+    "@platforms//os:macos": {
         "MIRRORD_LAYER_FILE": "//mirrord/layer:universal_layer",
         "MIRRORD_LAYER_FILE_MACOS_ARM64": "//mirrord/layer:layer_aarch64",
         "MIRRORD_SIP_BINARIES": "@apple_utils//file",
         "MIRRORD_UI_DIST": "//packages/ui:dist",
     },
-    "windows": {
+    "@platforms//os:windows": {
         "MIRRORD_LAYER_FILE": "//mirrord/layer-win:layer_file",
         "MIRRORD_UI_DIST": "//packages/ui:dist",
     },
+    "//conditions:default": {},
 }
 
-BUNDLED_FILES_FOR_OS = select({
-    "@platforms//os:" + os: files.values()
-    for os, files in BUNDLED_FILES.items()
-} | {"//conditions:default": []})
+# The targets that build the bundled files, for `data` and `compile_data`.
+BUNDLED_FILE_TARGETS = select({
+    condition: files.values()
+    for condition, files in BUNDLED_FILES.items()
+})
 
 # The CLI's two binaries, which differ in how they get the bundled files.
 #
@@ -76,20 +83,20 @@ BUNDLED_FILES_FOR_OS = select({
         name = "cli_standalone" if standalone else "cli",
         srcs = glob(["src/**/*.rs"]),
         binary_name = "standalone/mirrord" if standalone else "mirrord",
-        compile_data = BUNDLED_FILES_FOR_OS if standalone else [],
+        compile_data = BUNDLED_FILE_TARGETS if standalone else [],
         crate_features = ["standalone"] if standalone else [],
-        data = [] if standalone else BUNDLED_FILES_FOR_OS,
+        data = [] if standalone else BUNDLED_FILE_TARGETS,
         doc = not standalone,
         rustc_env = select({
-            "@platforms//os:" + os: {
+            condition: {
                 variable: "$({} {})".format(
                     "execpath" if standalone else "rlocationpath",
                     file,
                 )
                 for variable, file in files.items()
             }
-            for os, files in BUNDLED_FILES.items()
-        } | {"//conditions:default": {}}),
+            for condition, files in BUNDLED_FILES.items()
+        }),
         # The CLI polls its whole runtime on the main thread, and Windows gives that thread 1 MiB
         # unless the binary asks for more, so the CLI asks for 4 MiB.
         rustc_flags = select({
@@ -113,7 +120,7 @@ BUNDLED_FILES_FOR_OS = select({
 rust_test(
     name = "unit_tests",
     crate = ":cli",
-    data = BUNDLED_FILES_FOR_OS,
+    data = BUNDLED_FILE_TARGETS,
     deps = all_crate_deps(normal_dev = True),
 )
 
