@@ -1,6 +1,7 @@
 load("@bazel_lib//lib:run_binary.bzl", "run_binary")
 load("@crates//:defs.bzl", "all_crate_deps")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:macos_sign.bzl", "macos_sign")
 load("//bazel:platform.bzl", "platform_filegroup")
 load("//bazel:rust.bzl", "rust_shared_library", "rust_test")
 
@@ -100,23 +101,54 @@ genrule(
     ]
 ]
 
+# The universal layer as `llvm-lipo` writes it. Its slices keep the signatures that they have on
+# their own, if any: lld signs the arm64 layer ad hoc, `:shim_arm64e` re-signs the shim ad hoc, and
+# lld doesn't sign the x86-64 layer, because x86-64 Macs run unsigned code.
 run_binary(
-    name = "universal_layer",
+    name = "universal_layer_unsigned",
     srcs = [
         ":layer_aarch64",
         ":layer_x86_64",
         ":shim_arm64e",
     ],
-    outs = ["universal/libmirrord_layer.dylib"],
+    outs = ["universal/unsigned/libmirrord_layer.dylib"],
     args = [
         "-create",
         "-output",
-        "$(execpath universal/libmirrord_layer.dylib)",
+        "$(execpath universal/unsigned/libmirrord_layer.dylib)",
         "$(execpath :layer_x86_64)",
         "$(execpath :shim_arm64e)",
         "$(execpath :layer_aarch64)",
     ],
     target_compatible_with = MACOS_ONLY,
     tool = "@llvm//tools:llvm-lipo",
+)
+
+# `:universal_layer_unsigned` signed as a whole, which signs each slice, in whatever configuration
+# asks for it. Use `:universal_layer`, which builds this once.
+macos_sign(
+    name = "universal_layer_signed_per_configuration",
+    src = ":universal_layer_unsigned",
+    out = "universal/libmirrord_layer.dylib",
+    identifier = "libmirrord_layer",
+    target_compatible_with = MACOS_ONLY,
+)
+
+# The universal layer, signed. The CLI embeds the layer's bytes, so the layer gets its final
+# signature here, before the CLI builds: ad hoc by default, which is all that loading the layer
+# needs, or MetalBear's Developer ID in a release (see `//bazel:macos_sign.bzl`).
+#
+# The `lipo` and signing steps run in the configuration for arm64 Macs, whatever the configuration
+# that asks for the layer. The file still has every slice, because each slice picks its own
+# platform. So the universal CLI's two slices, which build in different configurations, embed the
+# same file, built and signed once. Otherwise the x86-64 slice would build the layer and sign it
+# again, and in a release, whose signatures carry a timestamp, the two slices would embed different
+# bytes.
+platform_filegroup(
+    name = "universal_layer",
+    srcs = [":universal_layer_signed_per_configuration"],
+    cpu = "aarch64",
+    os = "macos",
+    target_compatible_with = MACOS_ONLY,
     visibility = ["//visibility:public"],
 )

@@ -27,6 +27,7 @@ load("@crates//:defs.bzl", "all_crate_deps")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load")
 load("@tar.bzl//tar:tar.bzl", "tar")
 load("//bazel:image.bzl", "image_tag")
+load("//bazel:macos_sign.bzl", "macos_sign")
 load("//bazel:platform.bzl", "platform_filegroup")
 load("//bazel:rust.bzl", "rust_binary", "rust_test")
 
@@ -153,26 +154,39 @@ MACOS_ONLY = select({
     ]
 ]
 
-# The universal CLI that mirrord distributes for macOS. CI signs and notarizes it after the build,
-# because that needs MetalBear's certificate and Apple's notary service. `//...` leaves it out,
-# because it builds the CLI for the other CPU too, so CI names it.
+# The universal CLI as `llvm-lipo` writes it. Its arm64 slice keeps the ad hoc signature that lld
+# gives it, and its x86-64 slice has none.
 run_binary(
-    name = "cli_standalone_universal",
+    name = "cli_standalone_universal_unsigned",
     srcs = [
         ":cli_standalone_aarch64",
         ":cli_standalone_x86_64",
     ],
-    outs = ["universal/mirrord"],
+    outs = ["universal/unsigned/mirrord"],
     args = [
         "-create",
         "-output",
-        "$(execpath universal/mirrord)",
+        "$(execpath universal/unsigned/mirrord)",
         "$(execpath :cli_standalone_x86_64)",
         "$(execpath :cli_standalone_aarch64)",
     ],
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     tool = "@llvm//tools:llvm-lipo",
+)
+
+# The universal CLI that mirrord distributes for macOS, signed ad hoc by default, or with
+# MetalBear's Developer ID in a release (see `//bazel:macos_sign.bzl`). Notarization, which uploads
+# the signed CLI to Apple's notary service, isn't part of the build: no target uses its result, and
+# it depends on a service rather than on the build's inputs. `//...` leaves the CLI out, because it
+# builds the CLI for the other CPU too, so CI names it.
+macos_sign(
+    name = "cli_standalone_universal",
+    src = ":cli_standalone_universal_unsigned",
+    out = "universal/mirrord",
+    identifier = "mirrord",
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
 )
 
 LINUX_ONLY = select({
