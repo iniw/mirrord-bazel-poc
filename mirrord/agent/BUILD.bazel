@@ -2,6 +2,7 @@ load("@crates//:defs.bzl", "all_crate_deps")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load")
 load("@tar.bzl//tar:mtree.bzl", "mutate")
 load("@tar.bzl//tar:tar.bzl", "tar")
+load("//bazel:image.bzl", "image_tag")
 load("//bazel:platform.bzl", "platform_filegroup")
 load("//bazel:rust.bzl", "rust_binary")
 
@@ -35,11 +36,18 @@ oci_image(
     tars = [":agent_layer"],
 )
 
-# `bazel run //mirrord/agent:image_load` loads the image for the host into Docker.
+# The tag that `:image_load` gives the image. `--agent_image_tag=you/mirrord-agent:dev` sets it.
+image_tag(
+    name = "image_tag",
+    build_setting_default = "ghcr.io/metalbear-co/mirrord:latest",
+)
+
+# `bazel run //mirrord/agent:image_load` loads the image for the host into Docker, under
+# `:image_tag`.
 oci_load(
     name = "image_load",
     image = ":image",
-    repo_tags = ["ghcr.io/metalbear-co/mirrord:latest"],
+    repo_tags = ":image_tag",
     target_compatible_with = LINUX_ONLY,
 )
 

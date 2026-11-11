@@ -47,6 +47,11 @@ build --per_file_copt=.*/mingw-w64-crt/.*@-Wno-attribute-alias
 build:linux --host_linkopt=-Wno-unused-command-line-argument
 build:macos --host_linkopt=-Wno-unused-command-line-argument
 
+# Shorter names for the flags that set the tags that `bazel run //mirrord/agent:image_load` and
+# `//mirrord/cli:image_load` load the images under, like `--agent_image_tag=you/mirrord-agent:dev`.
+common --flag_alias=agent_image_tag=//mirrord/agent:image_tag
+common --flag_alias=cli_image_tag=//mirrord/cli:image_tag
+
 # Keeps symbol tables in binaries, as Cargo and `go build` do. Bazel's default, `sometimes`, strips
 # fastbuild binaries, so rules_go would link the Go test apps with `-s -w`, and the real layer finds
 # Go's runtime in an app by the app's symbols. Optimized builds aren't stripped either way.
