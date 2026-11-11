@@ -22,6 +22,7 @@ rust_library(
             "//mirrord/layer-tests/tests/apps/app_go:app_go_1_25",
             "//mirrord/layer-tests/tests/apps/app_go:app_go_1_26",
             "//mirrord/layer-tests/tests/apps/app_go:app_go_1_27",
+            "//mirrord/layer",
         ],
         "c_stat": ["//mirrord/layer-tests/tests/apps/c_stat"],
         "getuid": [

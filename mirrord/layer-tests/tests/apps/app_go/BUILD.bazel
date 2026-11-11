@@ -1,9 +1,21 @@
 load("@rules_go//go:def.bzl", "go_binary", "go_cross_binary")
 
+# The app as `go build` builds the real test apps: with cgo where Go supports it, so that a program
+# that uses `net` is linked dynamically and the layer can be preloaded into it, and with its symbol
+# table, which the real layer finds Go's runtime by. Go's cgo only works with GCC-style compilers,
+# so builds for MSVC leave it off, as `go build` does without a C compiler.
 go_binary(
     name = "app_go",
-    srcs = ["main.go"],
-    pure = "on",
+    srcs = [
+        "getuid_cgo.go",
+        "getuid_nocgo.go",
+        "main.go",
+    ],
+    cgo = True,
+    pure = select({
+        "@platforms//os:windows": "on",
+        "//conditions:default": "off",
+    }),
     deps = ["@com_github_go_chi_chi_v5//:chi"],
 )
 

@@ -47,6 +47,11 @@ build --per_file_copt=.*/mingw-w64-crt/.*@-Wno-attribute-alias
 build:linux --host_linkopt=-Wno-unused-command-line-argument
 build:macos --host_linkopt=-Wno-unused-command-line-argument
 
+# Keeps symbol tables in binaries, as Cargo and `go build` do. Bazel's default, `sometimes`, strips
+# fastbuild binaries, so rules_go would link the Go test apps with `-s -w`, and the real layer finds
+# Go's runtime in an app by the app's symbols. Optimized builds aren't stripped either way.
+build --strip=never
+
 # Names output directories after the target platform. Bazel would otherwise name them after the CPU
 # and compilation mode only, so builds for different platforms of the same CPU, such as the MSVC
 # and gnullvm builds for x86-64 Windows, would write to the same paths, and each switch between them
