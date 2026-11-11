@@ -19,7 +19,7 @@ also give each crate a `<name>_doc` target that runs rustdoc on it, which
 
 load("@crates//:data.bzl", "DEP_DATA")
 load("@crates//:defs.bzl", "aliases", "crate_name", "edition", "lint_config")
-load("@mirrord_version//:version.bzl", "VERSION")
+load("@mirrord_version//:version.bzl", "VERSIONS")
 load("@rules_rs//rs:rust_binary.bzl", _rust_binary = "rust_binary")
 load("@rules_rs//rs:rust_library.bzl", _rust_library = "rust_library")
 load("@rules_rs//rs:rust_shared_library.bzl", _rust_shared_library = "rust_shared_library")
@@ -61,6 +61,17 @@ def _crate_features():
         return features
     return features + select(features_by_platform | {"//conditions:default": []})
 
+def _version():
+    """Returns the version of the package's crate from its `Cargo.toml`, as Cargo gives it.
+
+    Most crates take the workspace's version, but some have their own, like `mirrord-protocol`,
+    whose version is the protocol version that the agent and the CLI negotiate.
+    """
+    package = native.package_name()
+    if package not in VERSIONS:
+        fail("{} isn't a member of the Cargo workspace, so it has no version".format(package))
+    return VERSIONS[package]
+
 def _cargo_attrs(kwargs, crate_name_from_cargo = True):
     """Returns `kwargs` with the attributes that the package's `Cargo.toml` decides.
 
@@ -74,7 +85,7 @@ def _cargo_attrs(kwargs, crate_name_from_cargo = True):
         "crate_features": _crate_features() + kwargs.pop("crate_features", []),
         "edition": edition(),
         "lint_config": lint_config(),
-        "version": VERSION,
+        "version": _version(),
     }
     if crate_name_from_cargo:
         attrs["crate_name"] = crate_name()
@@ -151,7 +162,7 @@ def rust_test(name, **kwargs):
             name = name,
             crate_features = _crate_features() + kwargs.pop("crate_features", []),
             rustc_flags = RUSTC_FLAGS + kwargs.pop("rustc_flags", []),
-            version = VERSION,
+            version = _version(),
             **kwargs
         )
     else:

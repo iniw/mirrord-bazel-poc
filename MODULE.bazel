@@ -33,8 +33,8 @@ bazel_dep(name = "tar.bzl", version = "0.10.9")
 bazel_dep(name = "aspect_rules_js", version = "3.6.0")
 bazel_dep(name = "bazel_skylib", version = "1.9.2")
 
-# `@mirrord_version` holds the workspace's version from `Cargo.toml`, which the Rust targets and the
-# UI take (see `//bazel:cargo_version.bzl`).
+# `@mirrord_version` holds the versions from the Cargo manifests: the workspace's, which the UI
+# takes, and each member's, which its Rust targets take (see `//bazel:cargo_version.bzl`).
 cargo_version = use_repo_rule("//bazel:cargo_version.bzl", "cargo_version")
 
 cargo_version(
