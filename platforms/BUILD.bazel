@@ -75,8 +75,8 @@ platform(
 ]
 
 # rules_rs's Windows platforms for MSVC, the ABI of the Windows CLI that mirrord distributes, named
-# like the Linux ones. Windows machines build for them with Visual Studio's toolchain (see
-# `visual_studio_x86_64` below), and other machines with the llvm toolchain.
+# like the Linux ones. Every machine builds for them with the llvm toolchain, Windows machines
+# included.
 [
     alias(
         name = cpu + "_windows",
@@ -113,35 +113,18 @@ platform(
 
 # The platform of a Windows machine, which `.bazelrc` sets for both the build's outputs and its
 # tools. It adds the MSVC ABI to the platform that Bazel detects, which names no ABI. The Windows
-# layer needs MSVC, because MinHook's C code includes headers that only the Windows SDK has. The C
-# toolchain comes from the machine's Visual Studio, see `visual_studio_x86_64` below.
+# layer needs MSVC, because MinHook's C code includes headers that only the Windows SDK has.
+#
+# Windows machines build with the llvm toolchain, as other machines do when they build for Windows,
+# rather than with an installed Visual Studio. Its `clang-cl` and `lld-link` download the MSVC
+# runtime and the Windows SDK (see `.bazelrc`), so the build doesn't depend on what's installed.
+# They also handle paths longer than Windows' 260-character limit, which the deeper files in
+# Bazel's output tree pass, while Visual Studio's `cl.exe` and `link.exe` fail on them.
 platform(
     name = "windows_host",
     constraint_values = ["@llvm//constraints/windows/abi:msvc"],
     parents = ["@platforms//host"],
     visibility = ["//visibility:public"],
-)
-
-# The x86-64 C/C++ toolchain of the Visual Studio installed on a Windows machine, which rules_cc
-# detects. Builds for MSVC on a Windows machine use it, because `MODULE.bazel` registers it before
-# the llvm toolchain. The llvm toolchain builds for MSVC too, with the patches to rules_rust that
-# `MODULE.bazel` applies, and other machines use it. Windows machines keep Visual Studio's toolchain
-# because the Windows CLI that mirrord distributes is built with it, and the llvm toolchain's links
-# for MSVC haven't been tried on a Windows machine. This toolchain runs on any Windows machine,
-# arm64 ones too, through emulation.
-#
-# There's no arm64 toolchain yet, because `aws-lc-sys` can't build for arm64 MSVC with Visual
-# Studio's `cl.exe`, only with clang-cl, and no arm64 Windows machine is available to test that.
-toolchain(
-    name = "visual_studio_x86_64",
-    exec_compatible_with = ["@platforms//os:windows"],
-    target_compatible_with = [
-        "@llvm//constraints/windows/abi:msvc",
-        "@platforms//cpu:x86_64",
-        "@platforms//os:windows",
-    ],
-    toolchain = "@local_config_cc//:cc-compiler-x64_windows",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 
 # Lets tests run on any execution platform, so that `bazel test` runs the tests for every target

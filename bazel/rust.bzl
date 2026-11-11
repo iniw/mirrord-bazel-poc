@@ -38,9 +38,9 @@ load(":nextest.bzl", "nextest_test")
 # link. rustc links through clang with `-nodefaultlibs`, which makes clang ignore those flags and
 # warn that they're unused, and rustc turns the warning into a `linker_messages` warning. The flags
 # don't change the result, so the warning can be turned off safely. Links for MSVC don't go through
-# clang, because Visual Studio's `link.exe` or the llvm toolchain's `lld-link` links them directly,
-# and neither knows the flag, so builds for MSVC leave it out. `.bazelrc` passes the flag to the
-# links of the tools that run during the build, like proc macros, which always go through clang.
+# clang, because the llvm toolchain's `lld-link` links them directly, and `lld-link` doesn't know
+# the flag, so builds for MSVC leave it out. On Linux and macOS, `.bazelrc` passes the flag to the
+# links of the tools that run during the build, like proc macros.
 RUSTC_FLAGS = ["-Dwarnings"] + select({
     "@llvm//constraints/windows/abi:msvc": [],
     "//conditions:default": ["-Clink-arg=-Wno-unused-command-line-argument"],

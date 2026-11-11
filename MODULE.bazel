@@ -68,8 +68,7 @@ rules_rust = use_extension("@rules_rs//rs:rules_rust.bzl", "rules_rust")
 #   `/clang:-Xlinker /clang:/LIBPATH:...`, into the linker's own.
 # - `lld-link.patch` makes rustc drive the `lld-link` next to clang-cl when the toolchain links MSVC
 #   with clang-cl. lld-link takes `link.exe` options, and the toolchain already passes it the same
-#   arguments through clang-cl. Visual Studio's toolchain links with `link.exe`, so the patch
-#   doesn't change the builds on Windows machines.
+#   arguments through clang-cl.
 rules_rust.patch(
     patches = [
         "//third_party/rules_rust:clang-cl-arguments.patch",
@@ -84,16 +83,9 @@ use_repo(rules_rust, "rules_rust")
 bindgen = use_extension("@rules_rs//rs:rules_rust_bindgen.bzl", "rules_rust_bindgen")
 use_repo(bindgen, "rules_rust_bindgen")
 
-# The C/C++ toolchains that rules_cc finds installed on the machine. Only Windows machines use one:
-# Visual Studio's, which builds for MSVC through `//platforms:visual_studio_x86_64`.
-cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
-use_repo(cc_configure, "local_config_cc")
-
 # The toolchains that builds can use (`//platforms/BUILD.bazel` explains toolchains). For each
-# kind of toolchain, Bazel takes the first one in this list that fits the platforms, so Visual
-# Studio's toolchain comes before the llvm toolchain, which supports MSVC too.
+# kind of toolchain, Bazel takes the first one in this list that fits the platforms.
 register_toolchains(
-    "//platforms:visual_studio_x86_64",
     "@default_rust_toolchains//...",
     "@llvm//toolchain:all",
     "@rules_rust_bindgen//:all",
@@ -142,9 +134,9 @@ crate.annotation(
 )
 
 # minhook-detours-sys, which the Windows layer uses, includes `SdkDdkVer.h`, but the Windows SDK
-# names the file `sdkddkver.h`. Windows file systems ignore the case, so Visual Studio finds it, but
-# builds for MSVC on Linux and macOS use the llvm toolchain's copy of the SDK on a case-sensitive
-# file system, and need the include to match.
+# names the file `sdkddkver.h`. Windows file systems ignore the case, so builds on Windows machines
+# find it, but builds on Linux and macOS read the llvm toolchain's copy of the SDK from a
+# case-sensitive file system, and need the include to match.
 crate.annotation(
     crate = "minhook-detours-sys",
     patch_args = ["-p1"],

@@ -13,7 +13,7 @@
 # - On macOS, builds target `//platforms:macos_host`, the platform that Bazel detects under a name
 #   that `//bazel:platform.bzl` can switch to.
 # - On Windows, builds and tools both target `//platforms:windows_host`, which builds for MSVC with
-#   the machine's Visual Studio.
+#   the llvm toolchain, as other machines do when they build for Windows.
 #
 # Passing another platform with `--platforms` cross-compiles, for example
 # `--platforms=//platforms:aarch64_linux`, `--platforms=//platforms:x86_64_macos` or
@@ -44,8 +44,8 @@ build --per_file_copt=.*/mingw-w64-crt/.*@-Wno-attribute-alias
 # build: build scripts, proc macros and rules_rust's own tools, which build for the machine.
 # `//bazel:rust.bzl` explains the warning, and turns it off for the workspace's own targets by the
 # platform that they build for, which `.bazelrc` can't choose flags by. Only Linux and macOS
-# machines pass the flag, because Windows machines link their tools with Visual Studio's `link.exe`,
-# which doesn't know it.
+# machines pass the flag, because Windows machines link their tools with `lld-link`, which doesn't
+# know it.
 build:linux --host_linkopt=-Wno-unused-command-line-argument
 build:macos --host_linkopt=-Wno-unused-command-line-argument
 
