@@ -51,6 +51,15 @@ platform(
     ]
 ]
 
+# The platform of a Mac, which `.bazelrc` sets for the builds there. It's the platform that Bazel
+# detects, under a name that `//bazel:platform.bzl` can switch to, so that files that a transition
+# builds for the Mac's own CPU are the same build as the rest of the Mac's build.
+platform(
+    name = "macos_host",
+    parents = ["@platforms//host"],
+    visibility = ["//visibility:public"],
+)
+
 # rules_rs's macOS platforms, named like the Linux ones. `//bazel:platform.bzl` relies on the
 # `{cpu}_{os}` names, to build the slices of the universal CLI and layer.
 [

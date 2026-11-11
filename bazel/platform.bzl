@@ -8,7 +8,21 @@ When the build already targets that OS and CPU, the files build for the build's 
 instead. They're then the same build as the build's other targets, and share their outputs, while
 a transition to another platform, even an equivalent one, would build them again in other output
 directories.
+
+For the same reason, when the OS and CPU are the machine's own, the transition sets the platform
+that `.bazelrc` gives the machine's builds, like `//platforms:macos_host`, rather than
+`//platforms:aarch64_macos`. So on an arm64 Mac, the arm64 files that the x86-64 slice of the
+universal CLI asks for are the same build as the CLI's arm64 slice, which builds for the machine.
 """
+
+load("@platforms//host:constraints.bzl", "HOST_CONSTRAINTS")
+
+# The platform that `.bazelrc` gives the builds on a machine of each OS. Windows machines aren't
+# here, because no target switches to Windows.
+_HOST_PLATFORMS = {
+    "linux": "//platforms:linux_host",
+    "macos": "//platforms:macos_host",
+}
 
 _PLATFORMS_FLAG = "//command_line_option:platforms"
 
@@ -44,12 +58,20 @@ def platform_filegroup(name, srcs, os, cpu, **kwargs):
       cpu: The CPU to build `srcs` for: `aarch64` or `x86_64`.
       **kwargs: The attributes common to all rules, like `tags`.
     """
+
+    # `HOST_CONSTRAINTS` names macOS by its older name, `osx`.
+    os_constraint = "@platforms//os:" + {"macos": "osx"}.get(os, os)
+    if os_constraint in HOST_CONSTRAINTS and "@platforms//cpu:" + cpu in HOST_CONSTRAINTS:
+        platform = _HOST_PLATFORMS[os]
+    else:
+        platform = "//platforms:{}_{}".format(cpu, os)
+
     _platform_filegroup(
         name = name,
         srcs = srcs,
         target_platform = select({
             "//platforms:is_{}_{}".format(os, cpu): None,
-            "//conditions:default": "//platforms:{}_{}".format(cpu, os),
+            "//conditions:default": platform,
         }),
         **kwargs
     )

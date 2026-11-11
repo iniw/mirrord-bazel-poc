@@ -10,7 +10,8 @@
 #
 # - On Linux, builds target `//platforms:linux_host` to link against glibc 2.17, while the tools
 #   that run during the build still build for the machine itself.
-# - On macOS, builds and tools both target the platform that Bazel detects.
+# - On macOS, builds target `//platforms:macos_host`, the platform that Bazel detects under a name
+#   that `//bazel:platform.bzl` can switch to.
 # - On Windows, builds and tools both target `//platforms:windows_host`, which builds for MSVC with
 #   the machine's Visual Studio.
 #
@@ -21,6 +22,7 @@
 # explains platforms.
 common --enable_platform_specific_config
 common:linux --platforms=//platforms:linux_host
+common:macos --platforms=//platforms:macos_host
 common:windows --host_platform=//platforms:windows_host
 
 # Accepts the license terms of Microsoft's MSVC runtime, which come with Visual Studio's
